@@ -1,6 +1,6 @@
 {
   "name": "medical-xml-parser",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Парсер XML файлов мед. учреждений по профилю в JSON.",
   "main": "index.js",
   "scripts": {
