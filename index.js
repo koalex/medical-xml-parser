@@ -18,6 +18,7 @@ const saxStream = sax.createStream(strict, {
     lowercase: true,
     xmlns: true
 });
+const Json2csvTransform = require('json2csv').Transform;
 
 const src  = argv.src;
 const dest = argv.dest;
@@ -42,7 +43,12 @@ let totalOrgs         = 0;
 let ORG               = {};
 let TAG               = null;
 let CAN_ADD_ORG_FIELD = false;
-let ORGfields         = ['ogrn', 'inn', 'full_name_licensee', 'address', '_works'];
+let ORGfields         = [
+    'ogrn', 'inn', 'full_name_licensee', 'address', '_works', 'activity_type', 'name', 'information_reissuing',
+    'abbreviated_name_licensee', 'index', 'region', 'city', 'street', 'number', 'date', 'date_register',
+    'date_duplicate', 'termination', 'date_termination', 'information_suspension_resumption', 'information_cancellation'
+];
+
 let inWorks           = false;
 let start             = true;
 
@@ -125,17 +131,54 @@ let rStream = fs.createReadStream(src)
 
 let file1percent = fileSizeInBytes / 100;
 let progress = 0;
-process.stdout.write('\rPROGRESS: ' + progress + '%');
+process.stdout.write('\rPROGRESS JSON: ' + progress + '%');
 rStream.on('data', chunk => {
     totalBytesRead += Buffer.byteLength(chunk);
     let currentProgress = Number((totalBytesRead / file1percent).toFixed());
     if (currentProgress > progress) {
         progress = currentProgress;
-        process.stdout.write('\rPROGRESS: ' + progress + '%');
+        process.stdout.write('\rPROGRESS JSON: ' + progress + '%');
     }
 });
 
 rStream.on('end', () => {
     wStream.end('\n]');
-    console.info('\nORGANIZATIONS FOUNDED: ' + totalOrgs);
+    createCSVFromResultJSON();
 });
+
+function createCSVFromResultJSON () {
+    const input           = fs.createReadStream(dest, { encoding: 'utf8' });
+    const output          = fs.createWriteStream(dest.replace(/\.[a-z]{1,6}/i, '.csv'), { encoding: 'utf8' });
+    const fileSizeInBytes = fs.statSync(dest).size;
+    const file1percent    = fileSizeInBytes / 100;
+    let totalBytesRead    = 0;
+    let progress          = 0;
+
+    const csvFields = ORGfields.filter(f => f !== '_works').concat('works');
+    const json2csv  = new Json2csvTransform({
+        fields: csvFields,
+        delimiter: '^*^',
+        quote: ''
+    }, { highWaterMark: 16384, encoding: 'utf-8' });
+
+
+    process.stdout.write('\n\rPROGRESS CSV: ' + progress + '%');
+
+    input.pipe(json2csv).pipe(output);
+
+    input
+        .on('data', chunk => {
+            totalBytesRead += Buffer.byteLength(chunk);
+            let currentProgress = Number((totalBytesRead / file1percent).toFixed());
+            if (currentProgress > progress) {
+                progress = currentProgress;
+                process.stdout.write('\rPROGRESS CSV: ' + progress + '%');
+            }
+        })
+        .on('end', () => {
+            console.info('\nORGANIZATIONS FOUNDED: ' + totalOrgs);
+        });
+
+    json2csv
+        .on('error', console.error);
+}
