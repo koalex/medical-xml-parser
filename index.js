@@ -51,6 +51,7 @@ let ORGfields         = [
 
 let inWorks           = false;
 let start             = true;
+let work = null;
 
 let wStream = fs.createWriteStream(dest);
 wStream.write('[');
@@ -62,13 +63,9 @@ function needToAddORG (org) {
         }
     }
 
-    for (let i = 0, l = org._works.length; i < l; i++) {
-        let add = filterWorksRegexp.some(re => (new RegExp(re, 'gim')).test(org._works[i]));
-
-        if (add) return true;
-    }
-
-    return false;
+    return !!org._works.filter( ({works}) => 
+            works?.some( w => filterWorksRegexp.some(re => (new RegExp(re, 'gim')).test(w)))
+        ).length;
 }
 
 function addOrgToResult (_ORG) {
@@ -80,9 +77,9 @@ function addOrgToResult (_ORG) {
                 delete _ORG[k];
             }
         }
-        _ORG.works = [].concat(_ORG._works).filter(work => {
-            return filterWorksRegexp.some(re => (new RegExp(re, 'gim')).test(work))
-        });
+        _ORG.addresses = [].concat(_ORG._works).filter(({ works }) => 
+            works?.some( w => filterWorksRegexp.some(re => (new RegExp(re, 'gim')).test(w)))
+        );
 
         delete _ORG._works;
 
@@ -98,9 +95,13 @@ saxStream.on('text', text => {
         ORG[TAG] = text.trim();
         return;
     }
-    if (inWorks && 'work' == TAG && text.trim()) {
-        if (!('_works' in ORG)) ORG._works = [];
-        ORG._works.push(text.trim());
+    if (inWorks && text.trim()) {
+        if (TAG == 'work') {
+            if (!('works' in work)) work.works = [];
+            work.works.push(text.trim());
+            return;
+        }
+        work[TAG] = text.trim();
     }
 });
 
@@ -110,8 +111,12 @@ saxStream.on('opentag', node => {
         CAN_ADD_ORG_FIELD = true;
     }
     if ('work_address_list' == node.name) {
+        if (!('_works' in ORG)) ORG._works = [];
         CAN_ADD_ORG_FIELD = false;
         inWorks = true;
+    }
+    if ('address_place' == node.name) {
+        work = {};
     }
 });
 
@@ -123,6 +128,9 @@ saxStream.on('closetag', tagName => {
     } else if ('work_address_list' == tagName) {
         CAN_ADD_ORG_FIELD = true;
         inWorks = false;
+    } else if ('address_place' == tagName) {
+        ORG._works.push(work);
+        work = null;
     }
 });
 
@@ -154,7 +162,7 @@ function createCSVFromResultJSON () {
     let totalBytesRead    = 0;
     let progress          = 0;
 
-    const csvFields = ORGfields.filter(f => f !== '_works').concat('works');
+    const csvFields = ORGfields.filter(f => f !== '_works').concat('addresses');
     const json2csv  = new Json2csvTransform({
         fields: csvFields,
         delimiter: '^*^',
